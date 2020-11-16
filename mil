@@ -1,0 +1,73 @@
+# Data file is downloaded and extracted to following working directory
+setwd("/home/s792/Documents/Coursera/Course/Captstone/Exploratory Data Analysis/")
+# load packages
+library(tm); library(stringi); 
+
+# Read the blogs and Twitter data into R
+blogs <- readLines("final/en_US/en_US.blogs.txt", encoding = "UTF-8", skipNul = TRUE)
+news <- readLines("final/en_US/en_US.news.txt", encoding = "UTF-8", skipNul = TRUE)
+twitter <- readLines("final/en_US/en_US.twitter.txt", encoding = "UTF-8", skipNul = TRUE)
+library(stringi)
+
+# Get file sizes
+blogs.size <- file.info("final/en_US/en_US.blogs.txt")$size / 1024 ^ 2
+news.size <- file.info("final/en_US/en_US.news.txt")$size / 1024 ^ 2
+twitter.size <- file.info("final/en_US/en_US.twitter.txt")$size / 1024 ^ 2
+
+# Get words in files
+blogs.words <- stri_count_words(blogs)
+news.words <- stri_count_words(news)
+twitter.words <- stri_count_words(twitter)
+
+# Summary of the data sets
+data.frame(source = c("blogs", "news", "twitter"),
+           file.size.MB = c(blogs.size, news.size, twitter.size),
+           num.lines = c(length(blogs), length(news), length(twitter)),
+           num.words = c(sum(blogs.words), sum(news.words), sum(twitter.words)),
+           mean.num.words = c(mean(blogs.words), mean(news.words), mean(twitter.words)))
+##    source file.size.MB num.lines num.words mean.num.words
+## 1   blogs     200.4242    899288  37546246       41.75108
+## 2    news     196.2775   1010242  34762395       34.40997
+## 3 twitter     159.3641   2360148  30093410       12.75065
+library(tm)
+# Sample the data
+set.seed(679)
+data.sample <- c(sample(blogs, length(blogs) * 0.01),
+                 sample(news, length(news) * 0.01),
+                 sample(twitter, length(twitter) * 0.01))
+
+# Create corpus and clean the data
+corpus <- VCorpus(VectorSource(data.sample))
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+corpus <- tm_map(corpus, toSpace, "(f|ht)tp(s?)://(.*)[.][a-z]+")
+corpus <- tm_map(corpus, toSpace, "@[^\\s]+")
+corpus <- tm_map(corpus, tolower)
+corpus <- tm_map(corpus, removeWords, stopwords("en"))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, PlainTextDocument)
+library(RWeka)
+library(ggplot2)
+options(mc.cores=1)
+
+getFreq <- function(tdm) {
+  freq <- sort(rowSums(as.matrix(tdm)), decreasing = TRUE)
+  return(data.frame(word = names(freq), freq = freq))
+}
+bigram <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+trigram <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+makePlot <- function(data, label) {
+  ggplot(data[1:30,], aes(reorder(word, -freq), freq)) +
+         labs(x = label, y = "Frequency") +
+         theme(axis.text.x = element_text(angle = 60, size = 12, hjust = 1)) +
+         geom_bar(stat = "identity", fill = I("grey50"))
+}
+
+# Get frequencies of most common n-grams in data sample
+freq1 <- getFreq(removeSparseTerms(TermDocumentMatrix(corpus), 0.9999))
+freq2 <- getFreq(removeSparseTerms(TermDocumentMatrix(corpus, control = list(tokenize = bigram)), 0.9999))
+freq3 <- getFreq(removeSparseTerms(TermDocumentMatrix(corpus, control = list(tokenize = trigram)), 0.9999))
+makePlot(freq1, "30 Most Common Unigrams")
+makePlot(freq2, "30 Most Common Bigrams")
+makePlot(freq3, "30 Most Common Trigrams")
